@@ -1,4 +1,4 @@
-from burp import IBurpExtender, IBurpCollaboratorClientContext, IExtensionStateListener, ITab
+from burp import IBurpExtender, IBurpCollaboratorClientContext, IExtensionStateListener, ITab, IScannerCheck
 from java.io import PrintWriter
 from java.lang import RuntimeException
 from javax.swing import JButton, JFrame, JLabel, JPanel, JTextField
@@ -7,8 +7,7 @@ from java.awt.event import ActionListener, ActionEvent
 import BaseHTTPServer
 import threading
 
-server = None
-collab = None
+server = None # The HTTP API Server running in a different thread
 
 class SimpleHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
@@ -25,22 +24,32 @@ class SimpleHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.send_header('Content-type', 'text/plain')
             self.end_headers()
             self.wfile.write(payload)
+        elif self.path == '/get_interactions':
+            global collab
+            interactions = collab.fetchAllCollaboratorInteractions()
+            self.send_response(200)
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(interactions)
         else:
             self.send_response(404)
             self.send_header('Content-type', 'text/plain')
             self.end_headers()
             self.wfile.write('404 Not Found')
 
-def run( HandlerClass = SimpleHTTPRequestHandler,
-         ServerClass = BaseHTTPServer.HTTPServer):
+def run_server(callbacks):
     global server
+    HandlerClass = SimpleHTTPRequestHandler
     server = BaseHTTPServer.HTTPServer( ('localhost',9876),HandlerClass)
     server.serve_forever()
+    stdout = PrintWriter(callbacks.getStdout(), True)
+    stdout.println("Server Started")
 
 class BurpExtender(IBurpExtender, IBurpCollaboratorClientContext, IExtensionStateListener):
 
     
     def registerExtenderCallbacks(self, callbacks):
+        self.callbacks = callbacks
         # set our extension name
         callbacks.setExtensionName("pycollaborator-api")
         callbacks.registerExtensionStateListener(self)
@@ -54,11 +63,12 @@ class BurpExtender(IBurpExtender, IBurpCollaboratorClientContext, IExtensionStat
         
         # write a message to our error stream
         stderr.println("Hello errors")
-
         global collab
         collab = callbacks.createBurpCollaboratorClientContext()
         stdout.println(collab.generatePayload(True))
-        threading.Thread(target=run).start()
+        threading.Thread(target=run_server,args=[callbacks]).start()
+
+
     def extensionUnloaded(self):
         # Called when the extension is unloaded
         global server
