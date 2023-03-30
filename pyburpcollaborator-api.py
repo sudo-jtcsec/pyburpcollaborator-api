@@ -6,8 +6,11 @@ from java.awt import Component, GridBagLayout, GridBagConstraints, TextField, La
 from java.awt.event import ActionListener, ActionEvent
 import BaseHTTPServer
 import threading
+import json
+import traceback
 
 server = None # The HTTP API Server running in a different thread
+collab = None
 
 class SimpleHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
@@ -27,10 +30,16 @@ class SimpleHTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         elif self.path == '/get_interactions':
             global collab
             interactions = collab.fetchAllCollaboratorInteractions()
+            inters = []
+            for i in interactions:
+                iss = {}
+                for k in i.getProperties().keySet():
+                    iss[str(k)] = str(i.getProperty(str(k)))
+                inters.append(iss)
             self.send_response(200)
-            self.send_header('Content-type', 'text/plain')
+            self.send_header('Content-type', 'application/json')
             self.end_headers()
-            self.wfile.write(interactions)
+            self.wfile.write(json.dumps(inters))
         else:
             self.send_response(404)
             self.send_header('Content-type', 'text/plain')
@@ -42,11 +51,8 @@ def run_server(callbacks):
     HandlerClass = SimpleHTTPRequestHandler
     server = BaseHTTPServer.HTTPServer( ('localhost',9876),HandlerClass)
     server.serve_forever()
-    stdout = PrintWriter(callbacks.getStdout(), True)
-    stdout.println("Server Started")
 
 class BurpExtender(IBurpExtender, IBurpCollaboratorClientContext, IExtensionStateListener):
-
     
     def registerExtenderCallbacks(self, callbacks):
         self.callbacks = callbacks
@@ -58,18 +64,14 @@ class BurpExtender(IBurpExtender, IBurpCollaboratorClientContext, IExtensionStat
         stdout = PrintWriter(callbacks.getStdout(), True)
         stderr = PrintWriter(callbacks.getStderr(), True)
         
-        # write a message to our output stream
-        stdout.println("Hello output")
-        
-        # write a message to our error stream
-        stderr.println("Hello errors")
         global collab
         collab = callbacks.createBurpCollaboratorClientContext()
-        stdout.println(collab.generatePayload(True))
-        threading.Thread(target=run_server,args=[callbacks]).start()
 
+        threading.Thread(target=run_server,args=[callbacks]).start()
 
     def extensionUnloaded(self):
         # Called when the extension is unloaded
+        stderr = PrintWriter(self.callbacks.getStderr(), True)
+
         global server
         server.server_close()
