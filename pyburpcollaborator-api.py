@@ -57,7 +57,7 @@ class BurpExtender(IBurpExtender, IBurpCollaboratorClientContext, IExtensionStat
     def registerExtenderCallbacks(self, callbacks):
         self.callbacks = callbacks
         # set our extension name
-        callbacks.setExtensionName("pycollaborator-api")
+        callbacks.setExtensionName("pyburpcollaborator-api")
         callbacks.registerExtensionStateListener(self)
         
         # obtain our output and error streams
